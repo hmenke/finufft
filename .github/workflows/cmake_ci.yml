@@ -126,6 +126,11 @@ jobs:
           - { os: macos-15-intel, toolchain: llvm }
           - { os: macos-15-intel, toolchain: gcc-15 }
 
+          # Three latest Intel oneAPI DPC++/C++ (icx/icpx) releases
+          - { os: ubuntu-24.04, toolchain: intel-2025.2 }
+          - { os: ubuntu-24.04, toolchain: intel-2025.3 }
+          - { os: ubuntu-24.04, toolchain: intel-2026.0 }
+
     steps:
       - name: Show CPU info (Linux)
         if: runner.os == 'Linux'
@@ -168,12 +173,30 @@ jobs:
         uses: mozilla-actions/sccache-action@v0.0.10
 
       - name: Setup Cpp
+        if: ${{ !startsWith(matrix.toolchain, 'intel-') }}
         uses: aminya/setup-cpp@v1
         with:
           compiler: ${{ matrix.toolchain }}
           vcvarsall: true
           cmake: true
           ninja: true
+
+      - name: Setup Intel toolchain
+        if: ${{ startsWith(matrix.toolchain, 'intel-') }}
+        run: |
+          set -eo pipefail
+          ver="${{ matrix.toolchain }}"; ver="${ver#intel-}"
+          curl -sSfL https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB | sudo tee /etc/apt/trusted.gpg.d/oneAPI.asc
+          echo "deb https://apt.repos.intel.com/oneapi all main" | sudo tee /etc/apt/sources.list.d/oneAPI.list
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends "intel-oneapi-compiler-dpcpp-cpp-${ver}" "intel-oneapi-openmp-${ver}"
+          ONEAPI_ROOT="/opt/intel/oneapi/compiler/${ver}"
+          echo "${ONEAPI_ROOT}/bin" >> "$GITHUB_PATH"
+          {
+            echo "CC=icx"
+            echo "CXX=icpx"
+            echo "LD_LIBRARY_PATH=${ONEAPI_ROOT}/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          } >> "$GITHUB_ENV"
 
       - name: Install toolchain + FFTW (macOS)
         if: startsWith(matrix.os, 'macos-')
